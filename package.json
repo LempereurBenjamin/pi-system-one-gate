@@ -1,0 +1,24 @@
+{
+  "name": "pi-system-one-gate",
+  "version": "0.1.0",
+  "description": "Opt-in, fail-open System One gate for large Pi tool results",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "engines": { "node": ">=22.19.0" },
+  "files": ["src", "scripts", "docs", "README.md", "LICENSE"],
+  "pi": { "extensions": ["./src/extension.ts"] },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "smoke:clef": "tsx scripts/smoke-clef.ts",
+    "smoke:pi": "tsx scripts/smoke-pi.ts"
+  }
+}
