@@ -9,9 +9,10 @@ import { batchChunks, chunkOutput, MAX_OUTPUT_CHARS } from "./chunker.ts";
 import { mustKeep } from "./policy.ts";
 import { prepareInvocation, sensitiveInvocation } from "./privacy.ts";
 
-function supportedBashOutput(value: unknown): boolean {
+function supportedBashOutput(value: unknown): value is { exit_code: number } {
   return object(value) && typeof value.output === "string" && typeof value.truncated === "boolean"
-    && value.exit_code === 0 && typeof value.wall_time_seconds === "number" && Number.isFinite(value.wall_time_seconds)
+    && typeof value.exit_code === "number" && Number.isInteger(value.exit_code) && value.exit_code >= 0
+    && typeof value.wall_time_seconds === "number" && Number.isFinite(value.wall_time_seconds)
     && value.wall_time_seconds >= 0 && (value.full_output_path === undefined || typeof value.full_output_path === "string")
     && Object.keys(value).every(key => ["output", "truncated", "exit_code", "wall_time_seconds", "full_output_path"].includes(key));
 }
@@ -22,9 +23,13 @@ export class ContextGate {
 
   async handle(event: ToolResultEvent, objective: string, signal?: AbortSignal): Promise<ToolResultEventResult | undefined> {
     const c = this.config;
+    const structured = event.structuredContent;
+    const bashProcessResult = event.toolName === "bash" && supportedBashOutput(structured);
+    // Pi marks ordinary non-zero process exits as errors; unsupported tool errors still bypass.
+    const bashProcessError = bashProcessResult && structured.exit_code !== 0;
     // Pi's top-level bash text is model-facing; its known structured payload is kept intact.
-    if (!c.enabled || event.isError || event.parentToolCallId !== undefined || ["read", "edit", "write"].includes(event.toolName) || !c.eligibleTools.includes(event.toolName)
-      || (event.structuredContent !== undefined && !(event.toolName === "bash" && supportedBashOutput(event.structuredContent)))
+    if (!c.enabled || (event.isError && !bashProcessError) || event.parentToolCallId !== undefined || ["read", "edit", "write"].includes(event.toolName) || !c.eligibleTools.includes(event.toolName)
+      || (event.structuredContent !== undefined && !bashProcessResult)
       || !event.content.length || event.content.some(part => part.type !== "text")) return;
     let metric: GateMetric = {
       mode: c.mode, tool: c.eligibleTools.includes(event.toolName) ? event.toolName : "unknown",

@@ -2,6 +2,7 @@
 const credentialPath = /(?:^|[\s/\\'"=:])(?:\.env(?:\.[\w.-]*)?|\.npmrc|\.netrc|\.pypirc|\.git-credentials|id_(?:rsa|ed25519|ecdsa)|(?:application_default_)?credentials(?:\.(?:json|ini|txt|ya?ml|toml))?|secrets?\.(?:json|ya?ml|toml)|auth\.json)(?=$|[\s/\\'":*?\[])/i;
 const credentialDirectory = /(?:\.aws|\.ssh|\.gnupg|\.docker|\.kube)(?:[/\\]|\b)/i;
 const secretField = /(?:api[_-]?key|auth[_-]?token|access[_-]?token|secret|password|passwd)/i;
+const credentialEnvName = /(?:^|[_-])(?:token|secret|password|passwd|api[_-]?key|auth|credentials?|private[_-]?key|access[_-]?key)(?:$|[_-])/i;
 
 export function sensitiveInvocation(input: string, output = ""): boolean {
   return credentialPath.test(input) || credentialDirectory.test(input) || credentialPath.test(output) || credentialDirectory.test(output)
@@ -31,7 +32,8 @@ export function prepareInvocation(input: Record<string, unknown>, redact: (text:
 }
 
 export function createRedactor(env: NodeJS.ProcessEnv): (text: string) => string {
-  const values = [...new Set(Object.values(env).filter((v): v is string => !!v))].sort((a, b) => b.length - a.length);
+  const values = [...new Set(Object.entries(env).filter(([name]) => credentialEnvName.test(name))
+    .map(([, value]) => value).filter((value): value is string => !!value))].sort((a, b) => b.length - a.length);
   return (text: string) => {
     let result = text
       .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, "[REDACTED PRIVATE KEY]")
@@ -40,7 +42,7 @@ export function createRedactor(env: NodeJS.ProcessEnv): (text: string) => string
       .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16})\b/g, "[REDACTED]");
     for (const value of values) {
       const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Short flags/numbers are matched as whole values to avoid masking every letter.
+      // Even short credentials must be hidden, without masking every occurrence of a letter.
       const pattern = value.length < 4 ? `(?<![\\w])${escaped}(?![\\w])` : escaped;
       result = result.replace(new RegExp(pattern, "g"), "[REDACTED ENV]");
     }

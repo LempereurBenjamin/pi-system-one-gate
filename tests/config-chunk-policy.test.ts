@@ -61,8 +61,8 @@ test("must-keep forces retention for failures, stacks, conflicts and security wa
   assert.equal(mustKeep("download progress 72%\nordinary diagnostic noise"), false);
 });
 
-test("redaction removes common secrets, private keys and environment values from state", () => {
-  const redact = createRedactor({ CLOUDFLARE_AUTH_TOKEN: "configured-secret", OTHER_ENV: "environment-value", SHORT: "1" });
+test("redaction removes common secrets, private keys and credential environment values from state", () => {
+  const redact = createRedactor({ CLOUDFLARE_AUTH_TOKEN: "configured-secret", OTHER_SECRET: "environment-value", SHORT_TOKEN: "1" });
   const original = 'Bearer bearer-secret\nAPI_KEY="api-secret"\n{"password": "password-secret"}\nconfigured-secret environment-value\n'
     + "-----BEGIN RSA PRIVATE KEY-----\nprivate material\n-----END RSA PRIVATE KEY-----\nflag=1\n";
   const safe = redact(original);
@@ -74,4 +74,17 @@ test("redaction removes common secrets, private keys and environment values from
   for (const invocation of ["cat .env", "cat .env.production", "cat ~/.aws/credentials", "cat ~/.ssh/id_ed25519", "cat ~/.pi/agent/auth.json", "printenv", "env", "cat .npmrc"])
     assert.equal(sensitiveInvocation(invocation), true, invocation);
   assert.equal(sensitiveInvocation("npm test"), false);
+});
+
+test("exact environment redaction is limited to credential-named variables", () => {
+  for (const name of ["TOKEN", "SERVICE_SECRET", "PASSWORD", "DB_PASSWD", "API_KEY", "SERVICE_APIKEY", "AUTH", "CREDENTIAL", "CREDENTIALS",
+    "PRIVATE_KEY", "ACCESS_KEY", "CLOUDFLARE_AUTH_TOKEN", "TYPESAFE_API_KEY", "lowercase_token"]) {
+    assert.equal(createRedactor({ [name]: "sensitive-value" })("use sensitive-value"), "use [REDACTED ENV]", name);
+  }
+  const redact = createRedactor({ SHLVL: "1", CI: "0", USER: "developer", HOME: "/home/developer", PATH: "/usr/bin" });
+  const harmless = "1 task; 0 changes; developer /home/developer /usr/bin";
+  assert.equal(redact(harmless), harmless);
+  for (const token of ["sk-" + "a".repeat(20), "ghp_" + "b".repeat(24), "AKIA" + "C".repeat(16)]) {
+    assert.equal(redact(token), "[REDACTED]");
+  }
 });
